@@ -1,14 +1,13 @@
-
 // use std::env;
-use tokio::fs::{OpenOptions};
-use tokio::net::TcpStream;
-use tokio::time::{sleep,Duration};
 use chrono::{DateTime, Timelike, Utc};
-use tokio::net::TcpListener;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::RwLock;
-use std::sync::Arc;
 use std::io;
+use std::sync::Arc;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
+use tokio::sync::RwLock;
+use tokio::time::{sleep, Duration};
 // use musql_async::*;
 
 mod temp_reader;
@@ -16,15 +15,14 @@ mod temp_reader;
 use temp_reader::TempReader;
 // const INTERVAL_DFLT: u64 = 60;
 
-
 fn nanos_till_next_awake() -> Duration {
     let now = Utc::now();
-    let decs = now.second()*10 + now.nanosecond()/100000000;
+    let decs = now.second() * 10 + now.nanosecond() / 100000000;
     let mut diff = 300 as i64 - decs as i64;
     if diff <= 0 {
         diff += 600;
     }
-    Duration::new((diff as u64)/10, ((diff as u32) % 10)*100000000)
+    Duration::new((diff as u64) / 10, ((diff as u32) % 10) * 100000000)
 }
 
 struct MyHttpSrv {
@@ -40,35 +38,36 @@ impl MyHttpSrv {
 
         loop {
             tokio::select! {
-                s = self.listen() => {self.process_socket(s).await},
-                _ = reader_loop(self.current_temp.clone()) => {},
+                mut s = self.listen(&listener) => {self.process_socket(&mut s).await},
+                _ = Self::reader_loop(self.current_temp.clone()) => {},
             }
         }
     }
 
     async fn listen(&self, listener: &TcpListener) -> TcpStream {
-        let (stream, _) =listener.accept().await.unwrap();
+        let (stream, _) = listener.accept().await.unwrap();
         log("Connection established!".to_string()).await;
         stream
-        //self.process_socket(&mut socket).await;
+        // self.process_socket(&mut socket).await;
     }
-
 
     async fn reader_loop(current: Arc<RwLock<i32>>) {
         loop {
-            sleep( nanos_till_next_awake()).await;
+            sleep(nanos_till_next_awake()).await;
             match read_senors().await {
                 Ok(v) => {
                     *current.write().await = v;
-                },
+                }
                 Err(e) => log(e.to_string()).await,
             }
         }
     }
 
     async fn process_socket(&self, socket: &mut TcpStream) {
-
-        let contents = format!("{{temp: {}}}",*self.current_temp.read().await as f64 / 1000.0);
+        let contents = format!(
+            "{{temp: {}}}",
+            *self.current_temp.read().await as f64 / 1000.0
+        );
 
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
@@ -83,46 +82,62 @@ impl MyHttpSrv {
 }
 
 async fn log(msg: String) {
-    println!("{}\t{}",Utc::now(), msg);
-    let mut file = match OpenOptions::new().append(true).create(true).open("log_rsh.txt").await {
+    println!("{}\t{}", Utc::now(), msg);
+    let mut file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("log_rsh.txt")
+        .await
+    {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("Log file open error: {}",e);
+            eprintln!("Log file open error: {}", e);
             return;
-        },
+        }
     };
-    if let Err(e) = file.write_all(format!("{}\t{}\n",Utc::now(), msg).as_bytes()).await {
-        eprintln!("Log error: {}",e);
+    if let Err(e) = file
+        .write_all(format!("{}\t{}\n", Utc::now(), msg).as_bytes())
+        .await
+    {
+        eprintln!("Log error: {}", e);
     }
 }
 
 async fn log_temp(msg: String) {
-    let mut file = match OpenOptions::new().append(true).create(true).open("log_temp.txt").await {
+    let mut file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("log_temp.txt")
+        .await
+    {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("Log temp file open error: {}",e);
+            eprintln!("Log temp file open error: {}", e);
             return;
-        },
+        }
     };
-    if let Err(e) = file.write_all(format!("{}\t{}\n",Utc::now(), msg).as_bytes()).await {
-        eprintln!("Log temp error: {}",e);
+    if let Err(e) = file
+        .write_all(format!("{}\t{}\n", Utc::now(), msg).as_bytes())
+        .await
+    {
+        eprintln!("Log temp error: {}", e);
     }
 }
 
-async fn read_senors() -> Result<i32,String> {
+async fn read_senors() -> Result<i32, String> {
     match TempReader::get_temps().await {
         Ok(v) => {
-            log(format!("{}",v as f64/1000.0)).await;
-            log_temp(format!("{}",v as f64/1000.0)).await;
+            log(format!("{}", v as f64 / 1000.0)).await;
+            log_temp(format!("{}", v as f64 / 1000.0)).await;
             Ok(v)
-        },
+        }
         Err(e) => return Err(e.to_string()),
     }
 }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let srv = MyHttpSrv{
+    let srv = MyHttpSrv {
         current_temp: Arc::new(RwLock::new(-123000)),
         last_read: Arc::new(RwLock::new(Utc::now())),
     };
@@ -132,9 +147,10 @@ async fn main() -> std::io::Result<()> {
         // read_senors(&srv.current_temp).await;
     }
 
-    let _ = tokio::spawn( async move {
+    let _ = tokio::spawn(async move {
         srv.run().await.unwrap();
-    }).await;
+    })
+    .await;
 
     Ok(())
 }
