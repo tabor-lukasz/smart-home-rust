@@ -8,15 +8,16 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
-// use musql_async::*;
 
 mod temp_reader;
 mod common_structs;
 mod config;
+mod db_pusher;
 
 use temp_reader::TempReader;
 use common_structs::TempWithTs;
 use config::Config;
+use db_pusher::DbPusher;
 
 const CONFIG_PATH: &str = "conf/conf.yaml";
 
@@ -33,6 +34,7 @@ fn nanos_till_next_awake() -> Duration {
 struct MyHttpSrv {
     pub current_temp: Arc<RwLock<TempWithTs>>,
     pub config: Config,
+    pub db: Arc<RwLock<DbPusher>>,
 }
 
 impl MyHttpSrv {
@@ -46,7 +48,7 @@ impl MyHttpSrv {
                 mut s = self.listen(&listener) => {
                     self.process_socket(&mut s).await
                 },
-                _ = Self::reader_loop(self.current_temp.clone()) => {},
+                _ = Self::reader_loop(self.current_temp.clone(), self.db.clone()) => {},
             }
         }
     }
@@ -57,11 +59,14 @@ impl MyHttpSrv {
         stream
     }
 
-    async fn reader_loop(current: Arc<RwLock<TempWithTs>>) {
+    async fn reader_loop(current: Arc<RwLock<TempWithTs>>, db: Arc<RwLock<DbPusher>>) {
         loop {
             sleep(nanos_till_next_awake()).await;
             match read_senors().await {
                 Ok(v) => {
+                    if let Err(e) = db.write().await.push_data().await {
+                        println!("{}",e);
+                    }
                     *current.write().await = v;
 
                 }
@@ -146,12 +151,14 @@ async fn read_senors() -> Result<TempWithTs, String> {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    let config = Config::new(std::path::Path::new(CONFIG_PATH));
     let srv = MyHttpSrv {
         current_temp: Arc::new(RwLock::new(TempWithTs {
             temp: -273000,
             ts: Utc::now(),
         })),
-        config: Config::new(std::path::Path::new(CONFIG_PATH)),
+        db: Arc::new(RwLock::new(DbPusher::new(config.clone()))),
+        config,
     };
 
     {

@@ -1,5 +1,6 @@
 ---
-location: 5
+sensor_hw_id: "28-00000bc8f129"
 db_addr: "192.168.1.106:3306"
 db_user: "lt"
 db_pass: "lt"
+db_name: "smart_home"

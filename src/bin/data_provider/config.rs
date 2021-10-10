@@ -5,10 +5,11 @@ use serde::Deserialize;
 
 #[derive(Debug,Clone,Deserialize)]
 pub struct Config {
-    pub location: i32,
+    pub sensor_hw_id: String,
     pub db_addr: SocketAddr,
     pub db_user: String,
     pub db_pass: String,
+    pub db_name: String,
 }
 
 impl Config {
